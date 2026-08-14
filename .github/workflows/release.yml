@@ -24,15 +24,15 @@ jobs:
           - name: macOS Apple Silicon
             platform: macos-latest
             rust-target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles dmg
           - name: macOS Intel
             platform: macos-latest
             rust-target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --bundles dmg
           - name: Windows x64
             platform: windows-latest
             rust-target: x86_64-pc-windows-msvc
-            args: ""
+            args: --bundles nsis
 
     steps:
       - name: Checkout
