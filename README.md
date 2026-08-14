@@ -13,7 +13,11 @@ CloudWatch 로그를 사용자의 AWS 계정 안에서 S3로 일일 백업하고
 
 - Apple Silicon Mac: `aarch64` DMG
 - Intel Mac: `x86_64` DMG
-- Windows 64비트: `.exe` 또는 `.msi` 설치 파일
+- Windows 64비트: `.exe` 설치 파일
+
+> **운영체제 검증 안내**
+>
+> 현재 실제 설치·실행과 주요 기능 확인은 **macOS에서만 진행했습니다.** Windows용 앱은 GitHub Actions의 Windows x64 환경에서 코드 컴파일, 프론트엔드 테스트 및 `.exe` 설치 파일 생성까지 성공했지만, 실제 Windows PC에서 설치·실행하거나 AWS 연동 기능을 검증해보지는 않았습니다. Windows 버전은 이 점을 참고해 테스트 용도로 사용해주세요.
 
 현재 설치 파일은 공인 코드 서명·공증 전이므로 macOS Gatekeeper 또는 Windows SmartScreen 경고가 표시될 수 있습니다. 소스와 GitHub Actions 빌드 내역을 확인한 뒤 설치하세요.
 
