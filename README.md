@@ -17,6 +17,19 @@ CloudWatch 로그를 사용자의 AWS 계정 안에서 S3로 일일 백업하고
 
 현재 설치 파일은 공인 코드 서명·공증 전이므로 macOS Gatekeeper 또는 Windows SmartScreen 경고가 표시될 수 있습니다. 소스와 GitHub Actions 빌드 내역을 확인한 뒤 설치하세요.
 
+### macOS에서 앱이 열리지 않을 때
+
+1. DMG를 열고 `로그 모닝.app`을 `Applications` 폴더로 옮깁니다.
+2. GitHub Releases에서 받은 파일이 맞는지 확인합니다.
+3. 터미널에서 격리 속성만 제거한 뒤 앱을 실행합니다.
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/로그 모닝.app"
+open "/Applications/로그 모닝.app"
+```
+
+`xattr -cr`도 실행은 가능하지만 앱의 다른 확장 속성까지 모두 제거하므로, 위처럼 `com.apple.quarantine`만 지정하는 방식을 권장합니다. 공인 Developer ID 서명과 Apple 공증이 추가되면 이 과정은 필요하지 않습니다.
+
 ## 화면 미리보기
 
 ### 로그 대시보드
