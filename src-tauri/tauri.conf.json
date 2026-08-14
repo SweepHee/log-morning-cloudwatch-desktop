@@ -1,0 +1,47 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "로그 모닝",
+  "version": "0.1.0",
+  "identifier": "app.logmorning.desktop",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://127.0.0.1:1420",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "로그 모닝",
+        "width": 1440,
+        "height": 920,
+        "minWidth": 1080,
+        "minHeight": 700,
+        "center": true,
+        "resizable": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: http://asset.localhost data:; style-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "category": "DeveloperTool",
+    "shortDescription": "매일 아침 확인하는 CloudWatch 로그 대시보드",
+    "longDescription": "사용자의 AWS 계정에서 S3에 백업된 CloudWatch 로그를 로컬에서 확인합니다.",
+    "macOS": {
+      "signingIdentity": "-",
+      "hardenedRuntime": true
+    },
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}

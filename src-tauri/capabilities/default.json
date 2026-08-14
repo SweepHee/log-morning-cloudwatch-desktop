@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "로그 모닝 기본 데스크톱 권한",
+  "windows": ["main"],
+  "permissions": ["core:default", "opener:allow-reveal-item-in-dir"]
+}

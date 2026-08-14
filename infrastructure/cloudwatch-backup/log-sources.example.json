@@ -1,0 +1,9 @@
+[
+  {
+    "group": "/aws/lambda/example-api"
+  },
+  {
+    "group": "/ecs/example-backend",
+    "streams": ["optional-stream-name"]
+  }
+]

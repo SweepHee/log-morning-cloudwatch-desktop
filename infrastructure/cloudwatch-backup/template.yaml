@@ -1,0 +1,218 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: >-
+  Log Morning's optional CloudWatch daily backup. It does not handle application traffic and
+  may be deleted with its schedule and IAM roles when the backup is no longer required.
+
+# 비용 메모 (2026-08-12 확인 기준, 요금은 변경될 수 있음):
+# - Lambda는 만들어 둔 것만으로 과금되지 않는다. 계정 전체가 공유하는 월 무료
+#   구간은 요청 100만 회와 400,000GB-초이며 이 작업은 월 약 30회 실행된다.
+# - 512MB로 회당 1분 실행하면 월 약 900GB-초다. 공유 무료 구간을 소진한 경우
+#   당시 서울 arm64 1단계는 GB-초당 $0.0000133334였다(1분이면 월 약 $0.012,
+#   10분이면 월 약 $0.12).
+# - EventBridge Scheduler의 당시 무료 구간은 월 1,400만 회이며 이 작업은 약 30회다.
+# - S3 저장·요청 비용과 CloudWatch 사용 비용은 별도다.
+#
+# 안전한 삭제 안내:
+# 일일 로그 백업이 더 이상 필요 없다면 Lambda, 스케줄러, 관련 IAM 역할과 이 스택을
+# 삭제해도 된다. 스택을 삭제하면 미래의 백업만 중단된다. S3 버킷은 의도적으로
+# 스택 외부에 두었으므로 기존 백업 객체는 그대로 남는다.
+
+Parameters:
+  BackupBucket:
+    Type: String
+    Description: Existing private S3 bucket that receives the daily CloudWatch backups.
+  BackupPrefix:
+    Type: String
+    Default: log-morning/daily
+    Description: S3 key prefix for generated daily backup objects.
+  CodeS3Key:
+    Type: String
+    Description: S3 key of the Lambda deployment zip uploaded by deploy.sh.
+  FunctionName:
+    Type: String
+    Default: log-morning-cloudwatch-backup
+    Description: Name for the optional backup Lambda.
+  ScheduleName:
+    Type: String
+    Default: log-morning-daily-0600-kst
+    Description: Name for the optional daily EventBridge Scheduler schedule.
+  LogSourcesJson:
+    Type: String
+    Description: JSON array of selected CloudWatch log groups and optional stream names.
+  LogGroupArnsCsv:
+    Type: String
+    Description: Comma-delimited CloudWatch log group ARNs matching LogSourcesJson.
+
+Resources:
+  BackupLambdaLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub /aws/lambda/${FunctionName}
+      RetentionInDays: 30
+      Tags:
+        - Key: Purpose
+          Value: cloudwatch-daily-log-backup
+        - Key: CanDeleteWhenUnused
+          Value: "true"
+
+  BackupLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: >-
+        Least-privilege role for the optional Log Morning CloudWatch-to-S3 backup Lambda.
+        Safe to delete with the backup stack when backups are no longer required.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: log-morning-backup-access
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Sid: ReadOnlySelectedCloudWatchLogGroups
+                Effect: Allow
+                Action:
+                  - logs:FilterLogEvents
+                Resource: !Split [",", !Ref LogGroupArnsCsv]
+              - Sid: WriteOnlyBackupPrefix
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource: !Sub arn:${AWS::Partition}:s3:::${BackupBucket}/${BackupPrefix}/*
+              - Sid: DeleteOnlySuccessMarkersForSafeRetry
+                Effect: Allow
+                Action: s3:DeleteObject
+                Resource:
+                  - !Sub arn:${AWS::Partition}:s3:::${BackupBucket}/${BackupPrefix}/*/_SUCCESS
+                  - !Sub arn:${AWS::Partition}:s3:::${BackupBucket}/${BackupPrefix}/*/_LIVE
+              - Sid: ReadBackupBucketLocation
+                Effect: Allow
+                Action: s3:GetBucketLocation
+                Resource: !Sub arn:${AWS::Partition}:s3:::${BackupBucket}
+              - Sid: WriteLambdaExecutionLogs
+                Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${FunctionName}:*
+      Tags:
+        - Key: Purpose
+          Value: cloudwatch-daily-log-backup
+        - Key: CanDeleteWhenUnused
+          Value: "true"
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  BackupLambda:
+    Type: AWS::Lambda::Function
+    DependsOn:
+      - BackupLambdaLogGroup
+      - BackupLambdaRole
+    Properties:
+      FunctionName: !Ref FunctionName
+      Description: >-
+        Daily CloudWatch-to-S3 log backup only; not production business logic. Safe to
+        delete with its schedule/roles when unused; existing S3 backups remain.
+      Runtime: python3.12
+      Architectures:
+        - arm64
+      Handler: lambda_function.lambda_handler
+      Role: !GetAtt BackupLambdaRole.Arn
+      MemorySize: 512
+      Timeout: 600
+      EphemeralStorage:
+        Size: 1024
+      ReservedConcurrentExecutions: 1
+      Code:
+        S3Bucket: !Ref BackupBucket
+        S3Key: !Ref CodeS3Key
+      Environment:
+        Variables:
+          BACKUP_BUCKET: !Ref BackupBucket
+          BACKUP_PREFIX: !Ref BackupPrefix
+          LOG_SOURCES_JSON: !Ref LogSourcesJson
+      Tags:
+        - Key: Name
+          Value: !Ref FunctionName
+        - Key: Purpose
+          Value: cloudwatch-daily-log-backup
+        - Key: BusinessCriticality
+          Value: low
+        - Key: CanDeleteWhenUnused
+          Value: "true"
+        - Key: ManagedBy
+          Value: CloudFormation
+        - Key: DataClassification
+          Value: sensitive-logs
+
+  SchedulerInvokeRole:
+    Type: AWS::IAM::Role
+    Properties:
+      Description: >-
+        Invokes the optional log-backup Lambda every day at 06:00 KST. Safe to delete
+        with the backup stack when backups are no longer required.
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: scheduler.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+              ArnLike:
+                # EventBridge Scheduler는 실행 역할을 맡을 때 개별 스케줄 ARN이 아니라
+                # 스케줄 그룹 ARN을 SourceArn으로 전달한다.
+                aws:SourceArn: !Sub arn:${AWS::Partition}:scheduler:${AWS::Region}:${AWS::AccountId}:schedule-group/default
+      Policies:
+        - PolicyName: invoke-log-morning-backup
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action: lambda:InvokeFunction
+                Resource: !GetAtt BackupLambda.Arn
+      Tags:
+        - Key: Purpose
+          Value: cloudwatch-daily-log-backup
+        - Key: CanDeleteWhenUnused
+          Value: "true"
+        - Key: ManagedBy
+          Value: CloudFormation
+
+  Daily0600KstSchedule:
+    Type: AWS::Scheduler::Schedule
+    Properties:
+      Name: !Ref ScheduleName
+      Description: >-
+        Runs the non-business CloudWatch log backup at 06:00 Asia/Seoul every day.
+        Safe to delete when daily log backup is no longer required.
+      State: ENABLED
+      ScheduleExpression: cron(0 6 * * ? *)
+      ScheduleExpressionTimezone: Asia/Seoul
+      FlexibleTimeWindow:
+        Mode: "OFF"
+      Target:
+        Arn: !GetAtt BackupLambda.Arn
+        RoleArn: !GetAtt SchedulerInvokeRole.Arn
+        Input: '{"source":"eventbridge-scheduler"}'
+        RetryPolicy:
+          MaximumEventAgeInSeconds: 3600
+          MaximumRetryAttempts: 3
+
+Outputs:
+  LambdaFunctionName:
+    Value: !Ref BackupLambda
+  ScheduleName:
+    Value: !Ref Daily0600KstSchedule
+  BackupS3Uri:
+    Value: !Sub s3://${BackupBucket}/${BackupPrefix}/
+  SafeDeletionCommand:
+    Description: >-
+      Safe when backups are no longer needed. Stops future backups; S3 objects remain.
+    Value: !Sub aws cloudformation delete-stack --region ${AWS::Region} --stack-name ${AWS::StackName}
